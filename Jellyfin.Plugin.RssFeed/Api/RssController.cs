@@ -2,7 +2,6 @@ using System.Text;
 using System.Xml.Linq;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using MediaBrowser.Model.Services;
 using Microsoft.AspNetCore.Http;
 
 namespace Jellyfin.Plugin.RssFeed.Api
