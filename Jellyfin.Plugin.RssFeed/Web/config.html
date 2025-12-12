@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<div data-role="page" class="type-interior pluginConfigurationPage rssConfigurationPage">
+    <div data-role="content">
+        <div class="content-primary">
+            <form class="rssConfigurationForm">
+                <div class="verticalSection">
+                    <div class="sectionTitleContainer">
+                        <h2 class="sectionTitle">RSS Feed Settings</h2>
+                        <p>Select the libraries you want to publish to the RSS feed.</p>
+                    </div>
+                    
+                    <!-- This div gets filled with checkboxes by the Javascript below -->
+                    <div id="libraryList" class="checkboxList"></div>
+
+                    <br/>
+                    <div class="inputContainer">
+                        <label class="inputLabel" for="txtToken">Security Token</label>
+                        <input is="emby-input" type="text" id="txtToken" label="Token" />
+                        <div class="fieldDescription">This token is auto-generated. Keep it secret.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <h3>Your Feed URL:</h3>
+                        <div class="readOnlyText" id="feedUrlDisplay" style="background:#333; padding:10px; word-break:break-all; color:#fff;">
+                            (Save configuration to generate URL)
+                        </div>
+                    </div>
+
+                    <button is="emby-button" type="submit" class="raised button-submit block">
+                        <span>Save</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        var RssPluginConfig = {
+            // !!! PASTE YOUR GUID HERE TO MATCH PLUGIN.CS !!!
+            pluginId: 'b6a52192-83d3-4938-afbd-f20ce331e1a1'
+        };
+
+        // Code to load the settings when page opens
+        $('.rssConfigurationPage').on('pageshow', function () {
+            Dashboard.showLoadingMsg();
+            var page = this;
+
+            // 1. Get List of Libraries from Jellyfin
+            ApiClient.getVirtualFolders().then(function(virtualFolders) {
+                var html = "";
+                virtualFolders.forEach(function(folder) {
+                    html += '<div><label><input type="checkbox" class="libraryCheckbox" data-id="' + folder.ItemId + '" /><span>' + folder.Name + '</span></label></div>';
+                });
+                $('#libraryList', page).html(html);
+
+                // 2. Get current settings for this plugin
+                ApiClient.getPluginConfiguration(RssPluginConfig.pluginId).then(function (config) {
+                    $('#txtToken', page).val(config.SecurityToken);
+                    
+                    if(config.EnabledLibraryIds) {
+                        $('.libraryCheckbox', page).each(function() {
+                            var id = $(this).attr('data-id');
+                            if(config.EnabledLibraryIds.includes(id)) {
+                                $(this).prop('checked', true);
+                            }
+                        });
+                    }
+
+                    // Show the RSS URL to the user
+                    var url = window.location.protocol + "//" + window.location.host + "/RSS/Feed.xml?token=" + config.SecurityToken;
+                    $('#feedUrlDisplay', page).text(url);
+
+                    Dashboard.hideLoadingMsg();
+                });
+            });
+        });
+
+        // Code to save settings
+        $('.rssConfigurationForm').on('submit', function () {
+            Dashboard.showLoadingMsg();
+            var page = $(this).parents('.page');
+
+            ApiClient.getPluginConfiguration(RssPluginConfig.pluginId).then(function (config) {
+                config.SecurityToken = $('#txtToken', page).val();
+                
+                var selectedIds = [];
+                $('.libraryCheckbox:checked', page).each(function() {
+                    selectedIds.push($(this).attr('data-id'));
+                });
+                config.EnabledLibraryIds = selectedIds;
+
+                ApiClient.updatePluginConfiguration(RssPluginConfig.pluginId, config).then(function (result) {
+                    Dashboard.processPluginConfigurationUpdateResult(result);
+                });
+            });
+            return false;
+        });
+    </script>
+</div>
