@@ -1,4 +1,4 @@
-name: Build and Publish Plugin
+name: Build and Release
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -16,10 +16,11 @@ jobs:
         uses: actions/setup-dotnet@v3
         with:
           dotnet-version: 8.0.x
-      - name: Build Plugin
-        run: dotnet build --configuration Release
-      - name: Publish to Repo
-        uses: jellyfin/jellyfin-plugin-action@v1.2
+      - name: Build
+        run: dotnet publish Jellyfin.Plugin.RssFeed/Jellyfin.Plugin.RssFeed.csproj --configuration Release --output bin/publish
+      - name: Zip
+        run: cd bin/publish && zip -r Jellyfin.Plugin.RssFeed.zip .
+      - name: Release
+        uses: softprops/action-gh-release@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          project-file: Jellyfin.Plugin.RssFeed/Jellyfin.Plugin.RssFeed.csproj
+          files: bin/publish/Jellyfin.Plugin.RssFeed.zip
