@@ -5,27 +5,30 @@
             <form class="rssConfigurationForm">
                 <div class="verticalSection">
                     <div class="sectionTitleContainer">
-                        <h2 class="sectionTitle">RSS Feed Settings</h2>
-                        <p>Select the libraries you want to publish to the RSS feed.</p>
+                        <h2 class="sectionTitle">RSS Feed Syndicator</h2>
+                        <p>Select which libraries appear in the RSS feed. Each library also gets its own filtered URL.</p>
                     </div>
-                    
-                    <!-- This div gets filled with checkboxes by the Javascript below -->
-                    <div id="libraryList" class="checkboxList"></div>
 
-                    <br/>
+                    <!-- Filled dynamically with one checkbox per library -->
+                    <div id="libraryList" class="checkboxList" style="margin-bottom:1em;"></div>
+
                     <div class="inputContainer">
                         <label class="inputLabel" for="txtToken">Security Token</label>
-                        <input is="emby-input" type="text" id="txtToken" label="Token" />
-                        <div class="fieldDescription">This token is auto-generated. Keep it secret.</div>
+                        <input is="emby-input" type="text" id="txtToken" />
+                        <div class="fieldDescription">Auto-generated. Keep it secret — it's the only thing protecting your feed URL.</div>
                     </div>
 
-                    <div class="inputContainer">
-                        <h3>Your Feed URL:</h3>
-                        <div class="readOnlyText" id="feedUrlDisplay" style="background:#333; padding:10px; word-break:break-all; color:#fff;">
-                            (Save configuration to generate URL)
+                    <div class="inputContainer" style="margin-top:1.5em;">
+                        <h3 style="margin-bottom:0.5em;">Feed URLs</h3>
+                        <p style="margin-bottom:0.5em;">All enabled libraries:</p>
+                        <div class="readOnlyText" id="feedUrlAll" style="background:#222;padding:10px;word-break:break-all;color:#ddd;border-radius:4px;">
+                            (Save to generate)
                         </div>
+                        <!-- Per-library URLs are injected here after load -->
+                        <div id="feedUrlPerLibrary" style="margin-top:1em;"></div>
                     </div>
 
+                    <br/>
                     <button is="emby-button" type="submit" class="raised button-submit block">
                         <span>Save</span>
                     </button>
@@ -36,61 +39,80 @@
 
     <script type="text/javascript">
         var RssPluginConfig = {
-            // !!! PASTE YOUR GUID HERE TO MATCH PLUGIN.CS !!!
             pluginId: 'b6a52192-83d3-4938-afbd-f20ce331e1a1'
         };
 
-        // Code to load the settings when page opens
+        function buildBaseUrl(token) {
+            return window.location.protocol + '//' + window.location.host + '/RSS/Feed.xml?token=' + token;
+        }
+
         $('.rssConfigurationPage').on('pageshow', function () {
             Dashboard.showLoadingMsg();
             var page = this;
 
-            // 1. Get List of Libraries from Jellyfin
-            ApiClient.getVirtualFolders().then(function(virtualFolders) {
-                var html = "";
-                virtualFolders.forEach(function(folder) {
-                    html += '<div><label><input type="checkbox" class="libraryCheckbox" data-id="' + folder.ItemId + '" /><span>' + folder.Name + '</span></label></div>';
-                });
-                $('#libraryList', page).html(html);
-
-                // 2. Get current settings for this plugin
+            ApiClient.getVirtualFolders().then(function (virtualFolders) {
                 ApiClient.getPluginConfiguration(RssPluginConfig.pluginId).then(function (config) {
-                    $('#txtToken', page).val(config.SecurityToken);
-                    
-                    if(config.EnabledLibraryIds) {
-                        $('.libraryCheckbox', page).each(function() {
-                            var id = $(this).attr('data-id');
-                            if(config.EnabledLibraryIds.includes(id)) {
-                                $(this).prop('checked', true);
-                            }
-                        });
-                    }
+                    // Build library checkboxes
+                    var html = '';
+                    virtualFolders.forEach(function (folder) {
+                        var checked = config.EnabledLibraryIds && config.EnabledLibraryIds.indexOf(folder.ItemId) !== -1
+                            ? 'checked' : '';
+                        html += '<div><label>'
+                            + '<input type="checkbox" class="libraryCheckbox" data-id="' + folder.ItemId + '" data-name="' + folder.Name + '" ' + checked + ' />'
+                            + '<span> ' + folder.Name + '</span>'
+                            + '</label></div>';
+                    });
+                    $('#libraryList', page).html(html);
 
-                    // Show the RSS URL to the user
-                    var url = window.location.protocol + "//" + window.location.host + "/RSS/Feed.xml?token=" + config.SecurityToken;
-                    $('#feedUrlDisplay', page).text(url);
+                    var token = config.SecurityToken;
+                    $('#txtToken', page).val(token);
+
+                    // Show all-libraries URL
+                    $('#feedUrlAll', page).text(buildBaseUrl(token));
+
+                    // Show per-library URLs for currently enabled libraries
+                    renderPerLibraryUrls(page, virtualFolders, config.EnabledLibraryIds, token);
 
                     Dashboard.hideLoadingMsg();
                 });
             });
         });
 
-        // Code to save settings
+        function renderPerLibraryUrls(page, virtualFolders, enabledIds, token) {
+            var html = '';
+            virtualFolders.forEach(function (folder) {
+                if (enabledIds && enabledIds.indexOf(folder.ItemId) !== -1) {
+                    var url = buildBaseUrl(token) + '&libraryId=' + folder.ItemId;
+                    html += '<p style="margin:0.4em 0 0.2em;font-weight:bold;">' + folder.Name + ':</p>'
+                        + '<div class="readOnlyText" style="background:#222;padding:10px;word-break:break-all;color:#ddd;border-radius:4px;">'
+                        + url + '</div>';
+                }
+            });
+            $('#feedUrlPerLibrary', page).html(html || '');
+        }
+
         $('.rssConfigurationForm').on('submit', function () {
             Dashboard.showLoadingMsg();
             var page = $(this).parents('.page');
 
             ApiClient.getPluginConfiguration(RssPluginConfig.pluginId).then(function (config) {
                 config.SecurityToken = $('#txtToken', page).val();
-                
+
+                // Collect checked library IDs as strings — C# config stores List<string>
                 var selectedIds = [];
-                $('.libraryCheckbox:checked', page).each(function() {
+                $('.libraryCheckbox:checked', page).each(function () {
                     selectedIds.push($(this).attr('data-id'));
                 });
                 config.EnabledLibraryIds = selectedIds;
 
                 ApiClient.updatePluginConfiguration(RssPluginConfig.pluginId, config).then(function (result) {
                     Dashboard.processPluginConfigurationUpdateResult(result);
+
+                    // Refresh URLs after save
+                    $('#feedUrlAll', page).text(buildBaseUrl(config.SecurityToken));
+                    ApiClient.getVirtualFolders().then(function (virtualFolders) {
+                        renderPerLibraryUrls(page, virtualFolders, config.EnabledLibraryIds, config.SecurityToken);
+                    });
                 });
             });
             return false;
