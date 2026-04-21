@@ -4,15 +4,18 @@ namespace Jellyfin.Plugin.RssFeed.Configuration
 {
     public class PluginConfiguration : BasePluginConfiguration
     {
-        public List<Guid> EnabledLibraryIds { get; set; }
+        // Stored as strings to match the IDs the Jellyfin web API returns (and JS sends back).
+        // Using Guid caused silent mismatches because JS gives us plain strings.
+        public List<string> EnabledLibraryIds { get; set; }
+
         public string SecurityToken { get; set; }
+
         public int RetentionHours { get; set; }
 
         public PluginConfiguration()
         {
-            EnabledLibraryIds = new List<Guid>();
-            // This auto-generates the token the very first time the plugin runs
-            SecurityToken = Guid.NewGuid().ToString("N"); 
+            EnabledLibraryIds = new List<string>();
+            SecurityToken = Guid.NewGuid().ToString("N");
             RetentionHours = 48;
         }
     }
