@@ -1,6 +1,6 @@
 # Jellyfin RSS Feed Syndicator
 
-A Jellyfin server plugin that generates a rolling RSS feed of recently added media. Subscribe to all your libraries at once, or get a separate feed URL per library — useful for notifying a Discord server, an RSS reader, or any other automation that can consume RSS.
+A Jellyfin server plugin that generates a rolling RSS feed of recently added media. Subscribe to all your libraries at once, or get a separate feed URL per library. Useful for notifying a Discord server, an RSS reader, or any other automation that can consume RSS.
 
 ---
 
@@ -12,23 +12,39 @@ The plugin listens for new items being added to your Jellyfin library in real ti
 
 ## Requirements
 
-- Jellyfin **10.9.0 or later** (tested against 10.11.x)
-- .NET 8 SDK (to build from source)
+- Jellyfin **10.11.x**
+- Docker (to build from source)
 
 ---
 
 ## Building from source
 
+You do not need .NET installed on your machine. Docker handles the entire build environment.
+
+Clone the repo and run the following from the repo root:
+
 ```bash
 git clone https://github.com/NullAngst/Jellyfin2RSS
 cd Jellyfin2RSS
 
-dotnet publish Jellyfin.Plugin.RssFeed/Jellyfin.Plugin.RssFeed.csproj \
-  --configuration Release \
-  --output ./publish
+docker run --rm \
+  -v "$(pwd)":/src \
+  -w /src \
+  mcr.microsoft.com/dotnet/sdk:9.0 \
+  dotnet publish Jellyfin.Plugin.RssFeed/Jellyfin.Plugin.RssFeed.csproj \
+    --configuration Release \
+    --output /src/publish
 ```
 
-This produces `Jellyfin.Plugin.RssFeed.dll` (and any dependencies) in `./publish`.
+This pulls the official Microsoft .NET 9 SDK image, compiles the project inside the container, and writes the output to `./publish/` on your host machine. The container is discarded automatically when the build finishes.
+
+When successful you will see:
+
+```
+Jellyfin.Plugin.RssFeed -> /src/publish/
+```
+
+The file you need is `publish/Jellyfin.Plugin.RssFeed.dll`.
 
 ---
 
@@ -39,14 +55,26 @@ This produces `Jellyfin.Plugin.RssFeed.dll` (and any dependencies) in `./publish
    - **Docker (linuxserver image):** `/config/plugins/`
    - **Windows:** `%APPDATA%\Jellyfin\plugins\`
 
-2. Create a folder for the plugin inside the plugins directory:
+2. Create a subfolder for the plugin inside the plugins directory:
    ```
    plugins/
    └── RssFeedSyndicator/
        └── Jellyfin.Plugin.RssFeed.dll
    ```
 
-3. Copy `Jellyfin.Plugin.RssFeed.dll` from `./publish` into that folder.
+3. Copy the DLL from `./publish/` into that folder.
+
+   **Linux native:**
+   ```bash
+   sudo mkdir -p /var/lib/jellyfin/plugins/RssFeedSyndicator
+   sudo cp publish/Jellyfin.Plugin.RssFeed.dll /var/lib/jellyfin/plugins/RssFeedSyndicator/
+   ```
+
+   **Jellyfin running in Docker** (adjust the config volume path to match your setup):
+   ```bash
+   mkdir -p /your/jellyfin/config/plugins/RssFeedSyndicator
+   cp publish/Jellyfin.Plugin.RssFeed.dll /your/jellyfin/config/plugins/RssFeedSyndicator/
+   ```
 
 4. Restart Jellyfin.
 
@@ -54,9 +82,9 @@ This produces `Jellyfin.Plugin.RssFeed.dll` (and any dependencies) in `./publish
 
 ## Configuration
 
-1. Open the Jellyfin Dashboard → **Plugins** → **RSS Feed Syndicator** → **Settings**.
+1. Open the Jellyfin Dashboard, go to **Plugins**, select **RSS Feed Syndicator**, and open **Settings**.
 
-2. Check the libraries you want to include in the feed.
+2. Check the libraries you want included in the feed.
 
 3. Click **Save**.
 
@@ -65,23 +93,23 @@ The settings page will display:
 - A **combined feed URL** covering all enabled libraries
 - An individual **per-library feed URL** for each enabled library
 
-Your security token is auto-generated on first run and shown on the settings page. Keep it secret — it's the only thing protecting access to the feed.
+Your security token is auto-generated on first run and shown on the settings page. Keep it secret — it is the only thing protecting access to your feed.
 
 ---
 
 ## Feed URLs
 
-### All enabled libraries
+All enabled libraries:
 ```
 https://your-jellyfin-server/RSS/Feed.xml?token=YOUR_TOKEN
 ```
 
-### Single library
+Single library:
 ```
 https://your-jellyfin-server/RSS/Feed.xml?token=YOUR_TOKEN&libraryId=LIBRARY_ITEM_ID
 ```
 
-The `libraryId` values are shown on the settings page next to each library's URL. You can find them manually in the Jellyfin API at `/Library/VirtualFolders` if needed.
+Library IDs are shown on the settings page next to each library's URL. You can also find them via the Jellyfin API at `/Library/VirtualFolders`.
 
 ---
 
@@ -91,7 +119,7 @@ The feed is standard RSS 2.0. Each item contains:
 
 | Field | Content |
 |---|---|
-| `title` | Movie: `Name (Year)` · Episode: `Series - S01E01 - Title` |
+| `title` | Movie: `Name (Year)` / Episode: `Series - S01E01 - Title` |
 | `description` | The item's overview/synopsis |
 | `link` | Direct link to the item in your Jellyfin web UI |
 | `guid` | The Jellyfin item ID |
@@ -107,12 +135,12 @@ The feed is standard RSS 2.0. Each item contains:
 | Security Token | *(auto-generated)* | Token required in the feed URL query string |
 | Retention Hours | `48` | Items older than this are removed from the feed |
 
-Retention hours can be changed by editing the plugin's XML config file directly (located in the Jellyfin config directory under `plugins/configurations/Jellyfin.Plugin.RssFeed.xml`) until a UI field is added for it.
+Retention hours can be changed by editing the plugin's XML config file directly, located at `plugins/configurations/Jellyfin.Plugin.RssFeed.xml` inside the Jellyfin config directory.
 
 ---
 
 ## Notes
 
-- The feed is **in-memory only** — it does not persist across Jellyfin restarts. If Jellyfin restarts, the feed starts fresh and fills as new items arrive.
+- The feed is **in-memory only** and does not persist across Jellyfin restarts. If Jellyfin restarts, the feed starts fresh and fills as new items arrive.
 - The plugin only captures items added **after** the plugin starts. It does not backfill from your existing library.
 - Only `Movie`, `Episode`, and `Audio` item types are included. Folders, seasons, series, and other container types are ignored.
