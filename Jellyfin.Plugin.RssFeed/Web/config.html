@@ -2,6 +2,12 @@
     <div data-role="content">
         <div class="content-primary">
             <style>
+                /* Jellyfin's React shell renders an empty full-viewport div called
+                   backgroundContainer that sits on top of plugin pages and eats all
+                   pointer events. Disable it while this page is open. */
+                .backgroundContainer {
+                    pointer-events: none !important;
+                }
                 .rssConfigurationPage label {
                     display: flex;
                     align-items: center;
