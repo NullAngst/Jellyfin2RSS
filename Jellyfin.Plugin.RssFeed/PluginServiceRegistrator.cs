@@ -1,14 +1,13 @@
 using Jellyfin.Plugin.RssFeed.Api;
-using MediaBrowser.Common.Plugins;
+using MediaBrowser.Controller;
+using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Jellyfin.Plugin.RssFeed
 {
-    // This class is how Jellyfin 10.9+ plugins register their services into the DI container.
-    // Without this, RssFeedService never starts and RssController can't be injected.
     public class PluginServiceRegistrator : IPluginServiceRegistrator
     {
-        public void RegisterServices(IServiceCollection serviceCollection, IServiceProvider applicationServiceProvider)
+        public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
         {
             // Register as singleton so the in-memory cache is shared between
             // the background listener and the API controller
