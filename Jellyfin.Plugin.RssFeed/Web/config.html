@@ -2,12 +2,6 @@
     <div data-role="content">
         <div class="content-primary">
             <style>
-                /* Jellyfin's React shell renders an empty full-viewport div called
-                   backgroundContainer that sits on top of plugin pages and eats all
-                   pointer events. Disable it while this page is open. */
-                .backgroundContainer {
-                    pointer-events: none !important;
-                }
                 .rssConfigurationPage label {
                     display: flex;
                     align-items: center;
@@ -91,6 +85,24 @@
         (function () {
             var PLUGIN_ID = 'b6a52192-83d3-4938-afbd-f20ce331e1a1';
             var _folders = [];
+            var _styleEl = null;
+
+            // Inject into <head> via CSSOM — survives React re-renders because React
+            // only manages its own virtual DOM, not arbitrary stylesheet nodes.
+            function injectHeadStyle() {
+                if (_styleEl) return;
+                _styleEl = document.createElement('style');
+                _styleEl.id = 'rss-plugin-overlay-fix';
+                _styleEl.textContent = '.backgroundContainer { pointer-events: none !important; }';
+                document.head.appendChild(_styleEl);
+            }
+
+            function removeHeadStyle() {
+                if (_styleEl && _styleEl.parentNode) {
+                    _styleEl.parentNode.removeChild(_styleEl);
+                    _styleEl = null;
+                }
+            }
 
             function baseUrl(token) {
                 return window.location.protocol + '//' + window.location.host
@@ -110,6 +122,7 @@
             }
 
             function load() {
+                injectHeadStyle();
                 Dashboard.showLoadingMsg();
                 Promise.all([
                     ApiClient.getVirtualFolders(),
@@ -159,6 +172,14 @@
                     });
                 });
             }
+
+            // Clean up the injected style if the user navigates away
+            document.addEventListener('viewhide', function onHide(e) {
+                if (e.target && e.target.classList && e.target.classList.contains('rssConfigurationPage')) {
+                    removeHeadStyle();
+                    document.removeEventListener('viewhide', onHide);
+                }
+            });
 
             document.getElementById('rssSaveBtn').addEventListener('click', save);
             load();
