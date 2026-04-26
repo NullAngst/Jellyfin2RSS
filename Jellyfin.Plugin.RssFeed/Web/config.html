@@ -104,6 +104,7 @@
             }
 
             function load() {
+                Dashboard.showLoadingMsg();
                 Promise.all([
                     ApiClient.getVirtualFolders(),
                     ApiClient.getPluginConfiguration(PLUGIN_ID)
@@ -126,10 +127,13 @@
                     renderPerLibrary(enabledIds, config.SecurityToken);
                 }).catch(function (err) {
                     console.error('RSS plugin load error:', err);
+                }).finally(function () {
+                    Dashboard.hideLoadingMsg();
                 });
             }
 
             function save() {
+                Dashboard.showLoadingMsg();
                 ApiClient.getPluginConfiguration(PLUGIN_ID).then(function (config) {
                     config.SecurityToken = document.getElementById('rssTokenInput').value;
                     config.EnabledLibraryIds = Array.from(
@@ -144,6 +148,8 @@
                         setTimeout(function () { s.style.display = 'none'; }, 3000);
                     }).catch(function (err) {
                         console.error('RSS plugin save error:', err);
+                    }).finally(function () {
+                        Dashboard.hideLoadingMsg();
                     });
                 });
             }
