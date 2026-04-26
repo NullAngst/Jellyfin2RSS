@@ -1,121 +1,133 @@
-<!DOCTYPE html>
 <div data-role="page" class="type-interior pluginConfigurationPage rssConfigurationPage">
     <div data-role="content">
         <div class="content-primary">
-            <form class="rssConfigurationForm">
-                <div class="verticalSection">
-                    <div class="sectionTitleContainer">
-                        <h2 class="sectionTitle">RSS Feed Syndicator</h2>
-                        <p>Select which libraries appear in the RSS feed. Each library also gets its own filtered URL.</p>
-                    </div>
-
-                    <!-- Filled dynamically with one checkbox per library -->
-                    <div id="libraryList" class="checkboxList" style="margin-bottom:1em;"></div>
-
-                    <div class="inputContainer">
-                        <label class="inputLabel" for="txtToken">Security Token</label>
-                        <input is="emby-input" type="text" id="txtToken" />
-                        <div class="fieldDescription">Auto-generated. Keep it secret — it's the only thing protecting your feed URL.</div>
-                    </div>
-
-                    <div class="inputContainer" style="margin-top:1.5em;">
-                        <h3 style="margin-bottom:0.5em;">Feed URLs</h3>
-                        <p style="margin-bottom:0.5em;">All enabled libraries:</p>
-                        <div class="readOnlyText" id="feedUrlAll" style="background:#222;padding:10px;word-break:break-all;color:#ddd;border-radius:4px;">
-                            (Save to generate)
-                        </div>
-                        <!-- Per-library URLs are injected here after load -->
-                        <div id="feedUrlPerLibrary" style="margin-top:1em;"></div>
-                    </div>
-
-                    <br/>
-                    <button is="emby-button" type="submit" class="raised button-submit block">
-                        <span>Save</span>
-                    </button>
+            <div class="verticalSection">
+                <div class="sectionTitleContainer">
+                    <h2 class="sectionTitle">RSS Feed Syndicator</h2>
+                    <p>Select which libraries appear in the RSS feed. Each library also gets its own filtered URL.</p>
                 </div>
-            </form>
+
+                <div id="libraryList" class="checkboxList" style="margin-bottom:1em;"></div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel" for="txtToken">Security Token</label>
+                    <input is="emby-input" type="text" id="txtToken" style="width:100%;" />
+                    <div class="fieldDescription">Auto-generated. Keep it secret — it is the only thing protecting your feed URL.</div>
+                </div>
+
+                <div class="inputContainer" style="margin-top:1.5em;">
+                    <h3 style="margin-bottom:0.5em;">Feed URLs</h3>
+                    <p style="margin-bottom:0.25em;">All enabled libraries:</p>
+                    <div id="feedUrlAll" style="background:#222;padding:10px;word-break:break-all;color:#ddd;border-radius:4px;">(Save to generate)</div>
+                    <div id="feedUrlPerLibrary" style="margin-top:1em;"></div>
+                </div>
+
+                <br/>
+                <button is="emby-button" type="button" id="btnSave" class="raised button-submit block">
+                    <span>Save</span>
+                </button>
+
+                <div id="saveStatus" style="margin-top:1em;color:#4CAF50;display:none;">Settings saved.</div>
+            </div>
         </div>
     </div>
 
     <script type="text/javascript">
-        var RssPluginConfig = {
-            pluginId: 'b6a52192-83d3-4938-afbd-f20ce331e1a1'
-        };
+        (function () {
+            var PLUGIN_ID = 'b6a52192-83d3-4938-afbd-f20ce331e1a1';
 
-        function buildBaseUrl(token) {
-            return window.location.protocol + '//' + window.location.host + '/RSS/Feed.xml?token=' + token;
-        }
+            function buildBaseUrl(token) {
+                return window.location.protocol + '//' + window.location.host + '/RSS/Feed.xml?token=' + encodeURIComponent(token);
+            }
 
-        $('.rssConfigurationPage').on('pageshow', function () {
-            Dashboard.showLoadingMsg();
-            var page = this;
+            function renderPerLibraryUrls(virtualFolders, enabledIds, token) {
+                var container = document.getElementById('feedUrlPerLibrary');
+                var html = '';
+                virtualFolders.forEach(function (folder) {
+                    if (enabledIds && enabledIds.indexOf(folder.ItemId) !== -1) {
+                        var url = buildBaseUrl(token) + '&libraryId=' + folder.ItemId;
+                        html += '<p style="margin:0.8em 0 0.2em;font-weight:bold;">' + folder.Name + ':</p>'
+                            + '<div style="background:#222;padding:10px;word-break:break-all;color:#ddd;border-radius:4px;">' + url + '</div>';
+                    }
+                });
+                container.innerHTML = html;
+            }
 
-            ApiClient.getVirtualFolders().then(function (virtualFolders) {
-                ApiClient.getPluginConfiguration(RssPluginConfig.pluginId).then(function (config) {
-                    // Build library checkboxes
+            function loadPage() {
+                Promise.all([
+                    ApiClient.getVirtualFolders(),
+                    ApiClient.getPluginConfiguration(PLUGIN_ID)
+                ]).then(function (results) {
+                    var virtualFolders = results[0];
+                    var config = results[1];
+
+                    var listEl = document.getElementById('libraryList');
                     var html = '';
                     virtualFolders.forEach(function (folder) {
-                        var checked = config.EnabledLibraryIds && config.EnabledLibraryIds.indexOf(folder.ItemId) !== -1
-                            ? 'checked' : '';
-                        html += '<div><label>'
-                            + '<input type="checkbox" class="libraryCheckbox" data-id="' + folder.ItemId + '" data-name="' + folder.Name + '" ' + checked + ' />'
-                            + '<span> ' + folder.Name + '</span>'
-                            + '</label></div>';
+                        var checked = config.EnabledLibraryIds && config.EnabledLibraryIds.indexOf(folder.ItemId) !== -1 ? 'checked' : '';
+                        html += '<div style="margin:0.4em 0;">'
+                            + '<label style="display:flex;align-items:center;gap:0.5em;cursor:pointer;">'
+                            + '<input type="checkbox" class="libraryCheckbox" data-id="' + folder.ItemId + '" ' + checked + ' />'
+                            + '<span>' + folder.Name + '</span>'
+                            + '</label>'
+                            + '</div>';
                     });
-                    $('#libraryList', page).html(html);
+                    listEl.innerHTML = html;
 
-                    var token = config.SecurityToken;
-                    $('#txtToken', page).val(token);
-
-                    // Show all-libraries URL
-                    $('#feedUrlAll', page).text(buildBaseUrl(token));
-
-                    // Show per-library URLs for currently enabled libraries
-                    renderPerLibraryUrls(page, virtualFolders, config.EnabledLibraryIds, token);
-
-                    Dashboard.hideLoadingMsg();
+                    document.getElementById('txtToken').value = config.SecurityToken || '';
+                    document.getElementById('feedUrlAll').textContent = buildBaseUrl(config.SecurityToken);
+                    renderPerLibraryUrls(virtualFolders, config.EnabledLibraryIds, config.SecurityToken);
+                }).catch(function (err) {
+                    console.error('RSS plugin: failed to load config', err);
                 });
-            });
-        });
+            }
 
-        function renderPerLibraryUrls(page, virtualFolders, enabledIds, token) {
-            var html = '';
-            virtualFolders.forEach(function (folder) {
-                if (enabledIds && enabledIds.indexOf(folder.ItemId) !== -1) {
-                    var url = buildBaseUrl(token) + '&libraryId=' + folder.ItemId;
-                    html += '<p style="margin:0.4em 0 0.2em;font-weight:bold;">' + folder.Name + ':</p>'
-                        + '<div class="readOnlyText" style="background:#222;padding:10px;word-break:break-all;color:#ddd;border-radius:4px;">'
-                        + url + '</div>';
+            function savePage() {
+                ApiClient.getPluginConfiguration(PLUGIN_ID).then(function (config) {
+                    config.SecurityToken = document.getElementById('txtToken').value;
+
+                    var selectedIds = [];
+                    document.querySelectorAll('.libraryCheckbox:checked').forEach(function (el) {
+                        selectedIds.push(el.getAttribute('data-id'));
+                    });
+                    config.EnabledLibraryIds = selectedIds;
+
+                    ApiClient.updatePluginConfiguration(PLUGIN_ID, config).then(function () {
+                        document.getElementById('feedUrlAll').textContent = buildBaseUrl(config.SecurityToken);
+
+                        ApiClient.getVirtualFolders().then(function (virtualFolders) {
+                            renderPerLibraryUrls(virtualFolders, config.EnabledLibraryIds, config.SecurityToken);
+                        });
+
+                        var status = document.getElementById('saveStatus');
+                        status.style.display = 'block';
+                        setTimeout(function () { status.style.display = 'none'; }, 3000);
+                    }).catch(function (err) {
+                        console.error('RSS plugin: failed to save config', err);
+                    });
+                });
+            }
+
+            document.addEventListener('viewshow', function (e) {
+                if (e.target && e.target.classList && e.target.classList.contains('rssConfigurationPage')) {
+                    loadPage();
                 }
             });
-            $('#feedUrlPerLibrary', page).html(html || '');
-        }
 
-        $('.rssConfigurationForm').on('submit', function () {
-            Dashboard.showLoadingMsg();
-            var page = $(this).parents('.page');
-
-            ApiClient.getPluginConfiguration(RssPluginConfig.pluginId).then(function (config) {
-                config.SecurityToken = $('#txtToken', page).val();
-
-                // Collect checked library IDs as strings — C# config stores List<string>
-                var selectedIds = [];
-                $('.libraryCheckbox:checked', page).each(function () {
-                    selectedIds.push($(this).attr('data-id'));
-                });
-                config.EnabledLibraryIds = selectedIds;
-
-                ApiClient.updatePluginConfiguration(RssPluginConfig.pluginId, config).then(function (result) {
-                    Dashboard.processPluginConfigurationUpdateResult(result);
-
-                    // Refresh URLs after save
-                    $('#feedUrlAll', page).text(buildBaseUrl(config.SecurityToken));
-                    ApiClient.getVirtualFolders().then(function (virtualFolders) {
-                        renderPerLibraryUrls(page, virtualFolders, config.EnabledLibraryIds, config.SecurityToken);
-                    });
-                });
+            document.addEventListener('DOMContentLoaded', function () {
+                var btn = document.getElementById('btnSave');
+                if (btn) {
+                    btn.addEventListener('click', savePage);
+                }
             });
-            return false;
-        });
+
+            // Fallback — if DOMContentLoaded already fired (Jellyfin injects pages dynamically)
+            var btn = document.getElementById('btnSave');
+            if (btn) {
+                btn.addEventListener('click', savePage);
+            }
+
+            loadPage();
+        })();
     </script>
 </div>
