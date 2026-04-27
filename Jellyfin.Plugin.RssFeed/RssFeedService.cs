@@ -71,7 +71,7 @@ namespace Jellyfin.Plugin.RssFeed
             // This prevents one entry per track when an album is scanned.
             if (item is Audio track)
             {
-                var albumId = track.AlbumId.ToString();
+                var albumId = track.ParentId.ToString("N");
                 lock (_lock)
                 {
                     if (_feedCache.Any(x => x.LinkId == albumId))
