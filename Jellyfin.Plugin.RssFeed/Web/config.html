@@ -1,4 +1,4 @@
-<div data-role="page" class="type-interior pluginConfigurationPage rssConfigurationPage">
+<div data-role="page" class="page type-interior pluginConfigurationPage rssConfigurationPage" data-require="emby-input,emby-button">
     <div data-role="content">
         <div class="content-primary">
             <style>
@@ -38,14 +38,6 @@
                     margin-top: 1.5em;
                     padding: 0.6em 2em;
                     font-size: 1em;
-                    background: #00a4dc;
-                    color: #fff;
-                    border: none;
-                    border-radius: 4px;
-                    cursor: pointer;
-                }
-                .rssConfigurationPage #rssSaveBtn:hover {
-                    background: #0090c0;
                 }
                 .rssConfigurationPage #rssSaveStatus {
                     margin-top: 0.75em;
@@ -55,16 +47,16 @@
             </style>
 
             <div class="verticalSection">
-                <div class="sectionTitleContainer">
+                <div class="sectionTitleContainer flex align-items-center">
                     <h2 class="sectionTitle">RSS Feed Syndicator</h2>
-                    <p>Select which libraries appear in the RSS feed. Each library also gets its own filtered URL.</p>
                 </div>
+                <p>Select which libraries appear in the RSS feed. Each library also gets its own filtered URL.</p>
 
                 <div id="rssLibraryList" style="margin-bottom: 1em;"></div>
 
                 <div class="inputContainer">
-                    <label class="inputLabel" for="rssTokenInput" style="display:block;margin-bottom:0.4em;">Security Token</label>
-                    <input type="text" id="rssTokenInput" />
+                    <label class="inputLabel inputLabelUnfocused" for="rssTokenInput">Security Token</label>
+                    <input type="text" id="rssTokenInput" is="emby-input" />
                     <div class="fieldDescription">Auto-generated. Keep it secret — it is the only thing protecting your feed URL.</div>
                 </div>
 
@@ -75,7 +67,9 @@
                     <div id="rssFeedUrlPerLibrary" style="margin-top: 1em;"></div>
                 </div>
 
-                <button type="button" id="rssSaveBtn">Save</button>
+                <button is="emby-button" type="button" class="raised button-submit block" id="rssSaveBtn">
+                    <span>${Save}</span>
+                </button>
                 <div id="rssSaveStatus">Settings saved.</div>
             </div>
         </div>
@@ -85,24 +79,6 @@
         (function () {
             var PLUGIN_ID = 'b6a52192-83d3-4938-afbd-f20ce331e1a1';
             var _folders = [];
-            var _styleEl = null;
-
-            // Inject into <head> via CSSOM — survives React re-renders because React
-            // only manages its own virtual DOM, not arbitrary stylesheet nodes.
-            function injectHeadStyle() {
-                if (_styleEl) return;
-                _styleEl = document.createElement('style');
-                _styleEl.id = 'rss-plugin-overlay-fix';
-                _styleEl.textContent = '.backgroundContainer { pointer-events: none !important; }';
-                document.head.appendChild(_styleEl);
-            }
-
-            function removeHeadStyle() {
-                if (_styleEl && _styleEl.parentNode) {
-                    _styleEl.parentNode.removeChild(_styleEl);
-                    _styleEl = null;
-                }
-            }
 
             function baseUrl(token) {
                 return window.location.protocol + '//' + window.location.host
@@ -121,8 +97,7 @@
                 document.getElementById('rssFeedUrlPerLibrary').innerHTML = html;
             }
 
-            function load() {
-                injectHeadStyle();
+            function load(page) {
                 Dashboard.showLoadingMsg();
                 Promise.all([
                     ApiClient.getVirtualFolders(),
@@ -173,16 +148,13 @@
                 });
             }
 
-            // Clean up the injected style if the user navigates away
-            document.addEventListener('viewhide', function onHide(e) {
-                if (e.target && e.target.classList && e.target.classList.contains('rssConfigurationPage')) {
-                    removeHeadStyle();
-                    document.removeEventListener('viewhide', onHide);
-                }
+            // Use Jellyfin's page lifecycle events — this is the correct pattern.
+            // Binding to pageshow ensures the DOM is ready and interactive before we touch it.
+            $('.rssConfigurationPage').on('pageshow', function () {
+                load(this);
             });
 
-            document.getElementById('rssSaveBtn').addEventListener('click', save);
-            load();
+            $('#rssSaveBtn').on('click', save);
         })();
     </script>
 </div>
