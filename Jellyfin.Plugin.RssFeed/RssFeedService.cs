@@ -15,7 +15,7 @@ namespace Jellyfin.Plugin.RssFeed
         public string LinkId { get; set; } = string.Empty;
         public DateTime PubDate { get; set; }
         public string ImageUrl { get; set; } = string.Empty;
-        // The top-level library ID this item belongs to — used for per-library feed filtering
+        // The top-level library ID this item belongs to - used for per-library feed filtering
         public string LibraryId { get; set; } = string.Empty;
     }
 
@@ -35,7 +35,7 @@ namespace Jellyfin.Plugin.RssFeed
             _logger = logger;
         }
 
-        // IHostedService.StartAsync — called when Jellyfin starts
+        // IHostedService.StartAsync - called when Jellyfin starts
         public Task StartAsync(CancellationToken cancellationToken)
         {
             _libraryManager.ItemAdded += OnItemAdded;
@@ -43,7 +43,7 @@ namespace Jellyfin.Plugin.RssFeed
             return Task.CompletedTask;
         }
 
-        // IHostedService.StopAsync — called when Jellyfin shuts down
+        // IHostedService.StopAsync - called when Jellyfin shuts down
         public Task StopAsync(CancellationToken cancellationToken)
         {
             _libraryManager.ItemAdded -= OnItemAdded;
@@ -55,15 +55,40 @@ namespace Jellyfin.Plugin.RssFeed
             var item = e.Item;
             var config = Plugin.Instance!.Configuration;
 
-            // Only handle concrete media types — ignore folders, seasons, series, etc.
-            if (item is not (Movie or Episode or Audio))
+            // Log everything that comes through so you can see what Jellyfin is firing
+            _logger.LogDebug("RSS Feed: ItemAdded fired for '{Name}', type={Type}", item.Name, item.GetType().Name);
+
+            // Accept movies, episodes, music albums, and individual audio tracks.
+            // MusicAlbum is the meaningful unit for music - one RSS entry per album, not per track.
+            // Individual Audio (tracks) are also accepted in case the album event doesn't fire.
+            if (item is not (Movie or Episode or MusicAlbum or Audio))
             {
+                _logger.LogDebug("RSS Feed: skipping '{Name}' - type {Type} not handled.", item.Name, item.GetType().Name);
                 return;
             }
 
+            // For individual audio tracks, skip them if the parent album was already added.
+            // This prevents one entry per track when an album is scanned.
+            if (item is Audio track)
+            {
+                var albumId = track.AlbumId.ToString();
+                lock (_lock)
+                {
+                    if (_feedCache.Any(x => x.LinkId == albumId))
+                    {
+                        _logger.LogDebug("RSS Feed: skipping track '{Name}' - parent album already in feed.", track.Name);
+                        return;
+                    }
+                }
+            }
+
             var libraryId = GetTopParentId(item);
+            _logger.LogDebug("RSS Feed: '{Name}' resolved top parent library ID = '{LibraryId}'", item.Name, libraryId ?? "(null)");
+
             if (libraryId is null || !config.EnabledLibraryIds.Contains(libraryId))
             {
+                _logger.LogDebug("RSS Feed: skipping '{Name}' - library '{LibraryId}' not enabled. Enabled: [{Enabled}]",
+                    item.Name, libraryId ?? "(null)", string.Join(", ", config.EnabledLibraryIds));
                 return;
             }
 
@@ -89,11 +114,13 @@ namespace Jellyfin.Plugin.RssFeed
         }
 
         // Walk up the tree to find the top-level virtual folder (the library root).
-        // GetTopParent() is the reliable Jellyfin API for this — no manual parent walking needed.
         private static string? GetTopParentId(BaseItem item)
         {
             var top = item.GetTopParent();
-            return top?.Id.ToString();
+            // Use "N" format (no dashes) to match the IDs the Jellyfin web API returns
+            // via getVirtualFolders(), which is what gets stored in EnabledLibraryIds.
+            // Default ToString() produces "D" format (with dashes), causing a silent mismatch.
+            return top?.Id.ToString("N");
         }
 
         private static string GetPrettyTitle(BaseItem item)
@@ -101,6 +128,19 @@ namespace Jellyfin.Plugin.RssFeed
             if (item is Episode ep)
             {
                 return $"{ep.SeriesName} - S{ep.ParentIndexNumber:00}E{ep.IndexNumber:00} - {ep.Name}";
+            }
+
+            if (item is MusicAlbum album)
+            {
+                var artist = album.AlbumArtist;
+                if (string.IsNullOrEmpty(artist) && album.AlbumArtists?.Count > 0)
+                {
+                    artist = album.AlbumArtists[0];
+                }
+
+                return string.IsNullOrEmpty(artist)
+                    ? $"{album.Name} ({album.ProductionYear})"
+                    : $"{artist} - {album.Name} ({album.ProductionYear})";
             }
 
             return $"{item.Name} ({item.ProductionYear})";
